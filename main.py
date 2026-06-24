@@ -23,14 +23,24 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from api.routes.editais import router as editais_router
+from api.routes.scheduler import router as scheduler_router
 from config import settings
 from database.engine import create_tables
+from scraper import browser_pool
+from scraper.sources.pncp import PNCPSource
+from services.scheduler_service import SchedulerService
 
 logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL, logging.INFO),
     format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+# ── instância global do scheduler ────────────────────────────────────────────
+
+scheduler = SchedulerService()
+scheduler.register(PNCPSource())
 
 
 # ── lifecycle ────────────────────────────────────────────────────────────────
@@ -40,8 +50,12 @@ async def lifespan(app: FastAPI):
     logger.info("Iniciando GovMatch API...")
     await create_tables()
     logger.info("Banco de dados pronto.")
+    scheduler.start()
+    logger.info("Scheduler iniciado.")
     yield
-    logger.info("Encerrando GovMatch API.")
+    await scheduler.shutdown()
+    await browser_pool.close_all()
+    logger.info("GovMatch API encerrada.")
 
 
 # ── app ──────────────────────────────────────────────────────────────────────
@@ -81,6 +95,7 @@ async def handler_generico(request: Request, exc: Exception):
 # ── rotas ────────────────────────────────────────────────────────────────────
 
 app.include_router(editais_router, prefix="/api/v1")
+app.include_router(scheduler_router, prefix="/api/v1")
 
 
 @app.get("/", tags=["Health"])
