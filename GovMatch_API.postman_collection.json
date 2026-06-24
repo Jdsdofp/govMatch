@@ -1,0 +1,681 @@
+{
+  "info": {
+    "name": "GovMatch API",
+    "description": "Collection completa para testar a API RESTful do GovMatch — busca, scraping e monitoramento de editais de licitação pública.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "govmatch"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "edital_id",
+      "value": "1",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "🏥 Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            },
+            "description": "Verifica se a API está no ar."
+          },
+          "response": []
+        },
+        {
+          "name": "Root",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/",
+              "host": ["{{base_url}}"],
+              "path": [""]
+            },
+            "description": "Retorna nome do serviço e versão."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🔄 Sync (Crawler)",
+      "item": [
+        {
+          "name": "Disparar Sync Geral",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Tem job_id', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.have.property('job_id');",
+                  "  pm.expect(json.job_id).to.not.be.null;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/editais/sync",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "editais", "sync"]
+            },
+            "description": "Dispara o crawler Playwright em background. Retorna imediatamente com job_id. Acompanhe o progresso nos logs do terminal."
+          },
+          "response": []
+        },
+        {
+          "name": "Sync filtrado por Estado (SP)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/editais/sync?estado=SP&max_paginas=2",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "editais", "sync"],
+              "query": [
+                { "key": "estado", "value": "SP", "description": "UF alvo" },
+                { "key": "max_paginas", "value": "2", "description": "Limita páginas para teste rápido" }
+              ]
+            },
+            "description": "Busca apenas editais publicados em São Paulo."
+          },
+          "response": []
+        },
+        {
+          "name": "Sync por Palavras-chave (TI)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/editais/sync?palavras_chave=TI%20suporte%20rede&max_paginas=3",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "editais", "sync"],
+              "query": [
+                { "key": "palavras_chave", "value": "TI suporte rede", "description": "Termos de busca separados por espaço" },
+                { "key": "max_paginas", "value": "3" }
+              ]
+            },
+            "description": "Busca editais de TI, suporte e rede no PNCP."
+          },
+          "response": []
+        },
+        {
+          "name": "Sync ME/EPP — Limpeza MG",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/editais/sync?palavras_chave=limpeza%20conserva%C3%A7%C3%A3o&estado=MG&max_paginas=2",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "editais", "sync"],
+              "query": [
+                { "key": "palavras_chave", "value": "limpeza conservação" },
+                { "key": "estado", "value": "MG" },
+                { "key": "max_paginas", "value": "2" }
+              ]
+            },
+            "description": "Cenário real: empresa de limpeza buscando editais em Minas Gerais."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "📋 Editais",
+      "item": [
+        {
+          "name": "Listar todos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Estrutura correta', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.have.property('total');",
+                  "  pm.expect(json).to.have.property('dados');",
+                  "  pm.expect(json.dados).to.be.an('array');",
+                  "});",
+                  "pm.test('Salva primeiro ID', () => {",
+                  "  const json = pm.response.json();",
+                  "  if (json.dados.length > 0) {",
+                  "    pm.collectionVariables.set('edital_id', json.dados[0].id);",
+                  "  }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/editais",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "editais"]
+            },
+            "description": "Lista todos os editais com paginação padrão (20 por página). O teste salva automaticamente o ID do primeiro edital na variável {{edital_id}}."
+          },
+          "response": []
+        },
+        {
+          "name": "Buscar por Palavras-chave",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/editais?q=TI suporte",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "editais"],
+              "query": [
+                { "key": "q", "value": "TI suporte", "description": "Busca em objeto e órgão" }
+              ]
+            },
+            "description": "Busca full-text nos campos objeto e órgão."
+          },
+          "response": []
+        },
+        {
+          "name": "Filtrar por Estado",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/editais?estado=SP",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "editais"],
+              "query": [
+                { "key": "estado", "value": "SP" }
+              ]
+            },
+            "description": "Somente editais de São Paulo."
+          },
+          "response": []
+        },
+        {
+          "name": "Filtrar Exclusivo ME/EPP",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/editais?exclusivo_me=true",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "editais"],
+              "query": [
+                { "key": "exclusivo_me", "value": "true" }
+              ]
+            },
+            "description": "Apenas licitações reservadas para Microempresas e EPPs."
+          },
+          "response": []
+        },
+        {
+          "name": "Filtrar por Modalidade",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/editais?modalidade=Preg%C3%A3o%20Eletr%C3%B4nico",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "editais"],
+              "query": [
+                { "key": "modalidade", "value": "Pregão Eletrônico" }
+              ]
+            },
+            "description": "Somente Pregões Eletrônicos."
+          },
+          "response": []
+        },
+        {
+          "name": "Filtrar por Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/editais?status=publicado",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "editais"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "publicado",
+                  "description": "Valores: publicado | aberto | em_andamento | disputa_aberta | homologado | cancelado | encerrado"
+                }
+              ]
+            },
+            "description": "Filtra pelo status do ciclo de vida do edital."
+          },
+          "response": []
+        },
+        {
+          "name": "Filtro Combinado (Query Real)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/editais?q=limpeza&estado=SP&exclusivo_me=true&pagina=1&por_pagina=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "editais"],
+              "query": [
+                { "key": "q", "value": "limpeza" },
+                { "key": "estado", "value": "SP" },
+                { "key": "exclusivo_me", "value": "true" },
+                { "key": "pagina", "value": "1" },
+                { "key": "por_pagina", "value": "10" }
+              ]
+            },
+            "description": "Cenário real: empresa de limpeza ME/EPP em SP — 10 resultados por página."
+          },
+          "response": []
+        },
+        {
+          "name": "Paginação — Página 2",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/editais?pagina=2&por_pagina=5",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "editais"],
+              "query": [
+                { "key": "pagina", "value": "2" },
+                { "key": "por_pagina", "value": "5" }
+              ]
+            },
+            "description": "Testa paginação — segunda página com 5 itens."
+          },
+          "response": []
+        },
+        {
+          "name": "Detalhe do Edital",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('ID correto', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.id).to.eql(parseInt(pm.collectionVariables.get('edital_id')));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/editais/{{edital_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "editais", "{{edital_id}}"]
+            },
+            "description": "Retorna todos os campos do edital, incluindo texto_extraido do PDF."
+          },
+          "response": []
+        },
+        {
+          "name": "Detalhe — ID Inexistente (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Retorna 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/editais/99999",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "editais", "99999"]
+            },
+            "description": "Testa tratamento de ID que não existe — deve retornar 404."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🔔 Alertas",
+      "item": [
+        {
+          "name": "Ativar Alerta (sem token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Alerta ativo', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.ativo).to.be.true;",
+                  "  pm.expect(json.edital_id).to.eql(parseInt(pm.collectionVariables.get('edital_id')));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"dispositivo_token\": null\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/editais/{{edital_id}}/alerta",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "editais", "{{edital_id}}", "alerta"]
+            },
+            "description": "Ativa monitoramento sem push notification. Apenas registra o edital para polling."
+          },
+          "response": []
+        },
+        {
+          "name": "Ativar Alerta (com token FCM)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"dispositivo_token\": \"fME9zXk7Qr2:APA91bH_TOKEN_FCM_SIMULADO_AQUI\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/editais/{{edital_id}}/alerta",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "editais", "{{edital_id}}", "alerta"]
+            },
+            "description": "Registra token FCM/APNs do dispositivo para push notifications quando o status mudar."
+          },
+          "response": []
+        },
+        {
+          "name": "Ativar Alerta — Edital Inexistente (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Retorna 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"dispositivo_token\": null\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/editais/99999/alerta",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "editais", "99999", "alerta"]
+            },
+            "description": "Tenta ativar alerta em edital inexistente — deve retornar 404."
+          },
+          "response": []
+        },
+        {
+          "name": "Desativar Alerta",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 204', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/editais/{{edital_id}}/alerta",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "editais", "{{edital_id}}", "alerta"]
+            },
+            "description": "Desativa o monitoramento. Retorna 204 No Content em caso de sucesso."
+          },
+          "response": []
+        },
+        {
+          "name": "Desativar Alerta Inexistente (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Retorna 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/editais/99999/alerta",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "editais", "99999", "alerta"]
+            },
+            "description": "Tenta desativar alerta que não existe — deve retornar 404."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🚀 Fluxo Completo (E2E)",
+      "item": [
+        {
+          "name": "1 — Health Check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('API online', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/health", "host": ["{{base_url}}"], "path": ["health"] }
+          },
+          "response": []
+        },
+        {
+          "name": "2 — Disparar Sync",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Sync iniciado', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "console.log('Job ID:', json.job_id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/editais/sync?palavras_chave=TI&max_paginas=1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "editais", "sync"],
+              "query": [
+                { "key": "palavras_chave", "value": "TI" },
+                { "key": "max_paginas", "value": "1" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "3 — Listar e Capturar ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Lista retornada', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Tem resultados', () => pm.expect(json.total).to.be.above(0));",
+                  "if (json.dados.length > 0) {",
+                  "  pm.collectionVariables.set('edital_id', json.dados[0].id);",
+                  "  console.log('Edital ID capturado:', json.dados[0].id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/editais?por_pagina=1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "editais"],
+              "query": [{ "key": "por_pagina", "value": "1" }]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "4 — Ver Detalhe",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Detalhe OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "console.log('Objeto:', json.objeto);",
+                  "console.log('Valor:', json.valor_estimado);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/editais/{{edital_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "editais", "{{edital_id}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "5 — Ativar Alerta",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Alerta criado', () => pm.response.to.have.status(201));",
+                  "console.log('Monitoramento ativo para edital:', pm.collectionVariables.get('edital_id'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"dispositivo_token\": null\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/editais/{{edital_id}}/alerta",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "editais", "{{edital_id}}", "alerta"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "6 — Desativar Alerta",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Alerta removido', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/editais/{{edital_id}}/alerta",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "editais", "{{edital_id}}", "alerta"]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
