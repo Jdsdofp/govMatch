@@ -6,7 +6,7 @@ import asyncio
 import logging
 import random
 
-from playwright.async_api import Browser, BrowserContext, Page, async_playwright
+from playwright.async_api import Browser, BrowserContext, Page, Playwright, async_playwright
 
 logger = logging.getLogger(__name__)
 
@@ -20,31 +20,40 @@ _LAUNCH_ARGS = [
 
 _HEADLESS: Browser | None = None
 _VISIBLE: Browser | None = None
-_PW = None  # instância global do playwright
+_PW: Playwright | None = None  # instância global do playwright
+_LOCK = asyncio.Lock()
 
 
-async def _get_pw():
+async def _ensure_pw() -> Playwright:
+    """Inicia playwright se necessário. NÃO adquire o lock — deve ser chamado dentro de _LOCK."""
     global _PW
     if _PW is None:
         _PW = await async_playwright().start()
     return _PW
 
 
+async def _get_pw() -> Playwright:
+    """Retorna instância global do playwright, criando se necessário."""
+    async with _LOCK:
+        return await _ensure_pw()
+
+
 async def get_browser(headless: bool = True) -> Browser:
     """Retorna singleton de browser. Cria se não existir ou se crashou."""
     global _HEADLESS, _VISIBLE
-    if headless:
-        if _HEADLESS is None or not _HEADLESS.is_connected():
-            pw = await _get_pw()
-            _HEADLESS = await pw.chromium.launch(headless=True, args=_LAUNCH_ARGS)
-            logger.info("Browser headless iniciado")
-        return _HEADLESS
-    else:
-        if _VISIBLE is None or not _VISIBLE.is_connected():
-            pw = await _get_pw()
-            _VISIBLE = await pw.chromium.launch(headless=False, args=_LAUNCH_ARGS)
-            logger.info("Browser visible iniciado")
-        return _VISIBLE
+    async with _LOCK:
+        if headless:
+            if _HEADLESS is None or not _HEADLESS.is_connected():
+                pw = await _ensure_pw()
+                _HEADLESS = await pw.chromium.launch(headless=True, args=_LAUNCH_ARGS)
+                logger.info("Browser headless iniciado")
+            return _HEADLESS
+        else:
+            if _VISIBLE is None or not _VISIBLE.is_connected():
+                pw = await _ensure_pw()
+                _VISIBLE = await pw.chromium.launch(headless=False, args=_LAUNCH_ARGS)
+                logger.info("Browser visible iniciado")
+            return _VISIBLE
 
 
 async def new_page(
