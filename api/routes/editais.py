@@ -46,6 +46,10 @@ async def sincronizar(
         Query(min_length=2, max_length=2),
     ] = None,
     max_paginas: Annotated[int, Query(ge=1, le=20)] = 5,
+    fonte: Annotated[
+        str | None,
+        Query(description="ID da fonte: pncp, bll, bnc, licitacoes_e, tce_sp, tce_mg, tce_rs"),
+    ] = None,
 ) -> SyncResponseSchema:
     job_id = str(uuid.uuid4())
     termos = palavras_chave.split() if palavras_chave else None
@@ -57,10 +61,11 @@ async def sincronizar(
         estado,
         max_paginas,
         job_id,
+        fonte,
     )
 
     return SyncResponseSchema(
-        mensagem="Sincronização iniciada em background.",
+        mensagem=f"Sincronização iniciada{'para ' + fonte if fonte else ' em background.'}",
         job_id=job_id,
     )
 
@@ -70,27 +75,49 @@ async def _executar_sync(
     estado: str | None,
     max_paginas: int,
     job_id: str,
+    fonte: str | None = None,
 ) -> None:
-    logger.info("Sync %s iniciado | palavras=%s | estado=%s", job_id, palavras_chave, estado)
-    async with AsyncSessionLocal() as db:
-        try:
-            resultado = await edital_service.sincronizar_editais(
-                db=db,
-                palavras_chave=palavras_chave,
-                estado=estado,
-                max_paginas=max_paginas,
+    logger.info("Sync %s iniciado | palavras=%s | estado=%s | fonte=%s", job_id, palavras_chave, estado, fonte)
+    if fonte:
+        from main import scheduler
+        from services.edital_service import processar_lote
+        source = next((s for s in scheduler._sources if s.source_id == fonte), None)
+        if source:
+            async with AsyncSessionLocal() as db:
+                try:
+                    editais = await source.buscar(
+                        palavras_chave=palavras_chave or None, estado=estado
+                    )
+                    resultado = await processar_lote(db, editais, fonte)
+                    await db.commit()
+                except Exception:
+                    await db.rollback()
+                    raise
+            logger.info(
+                "[sync manual] job=%s fonte=%s resultado=%s", job_id, fonte, resultado
             )
-            await db.commit()
-        except Exception:
-            await db.rollback()
-            raise
-    logger.info(
-        "Sync %s concluído | encontrados=%d | novos=%d | status=%s",
-        job_id,
-        resultado["total_encontrados"],
-        resultado["total_novos"],
-        resultado["status"],
-    )
+        else:
+            logger.warning("[sync manual] Fonte '%s' não encontrada", fonte)
+    else:
+        async with AsyncSessionLocal() as db:
+            try:
+                resultado = await edital_service.sincronizar_editais(
+                    db=db,
+                    palavras_chave=palavras_chave,
+                    estado=estado,
+                    max_paginas=max_paginas,
+                )
+                await db.commit()
+            except Exception:
+                await db.rollback()
+                raise
+        logger.info(
+            "Sync %s concluído | encontrados=%d | novos=%d | status=%s",
+            job_id,
+            resultado["total_encontrados"],
+            resultado["total_novos"],
+            resultado["status"],
+        )
 
 
 # ── GET /editais ─────────────────────────────────────────────────────────────

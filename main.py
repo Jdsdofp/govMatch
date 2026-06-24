@@ -28,6 +28,12 @@ from config import settings
 from database.engine import create_tables
 from scraper import browser_pool
 from scraper.sources.pncp import PNCPSource
+from scraper.sources.bll import BLLSource
+from scraper.sources.bnc import BNCSource
+from scraper.sources.licitacoes_e import LicitacoesESource
+from scraper.sources.tce_sp import TCESPSource
+from scraper.sources.tce_mg import TCEMGSource
+from scraper.sources.tce_rs import TCERSSource
 from services.scheduler_service import SchedulerService
 
 logging.basicConfig(
@@ -40,7 +46,13 @@ logger = logging.getLogger(__name__)
 # ── instância global do scheduler ────────────────────────────────────────────
 
 scheduler = SchedulerService()
-scheduler.register(PNCPSource())
+scheduler.register(PNCPSource())          # 1h
+scheduler.register(BLLSource())           # 6h
+scheduler.register(BNCSource())           # 6h
+scheduler.register(LicitacoesESource())   # 6h
+scheduler.register(TCESPSource())         # 6h
+scheduler.register(TCEMGSource())         # 6h
+scheduler.register(TCERSSource())         # 6h
 
 
 # ── lifecycle ────────────────────────────────────────────────────────────────
