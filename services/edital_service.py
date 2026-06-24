@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import AlertaMonitoramento, Edital, EditalStatus, SyncLog
 from scraper.browser import EditalRaw, GovMatchScraper
+from scraper.sources.base import EditalRaw as SourceEditalRaw
 from scraper.ocr_processor import processar_pdf
 
 logger = logging.getLogger(__name__)
@@ -110,6 +111,94 @@ async def _persistir_edital(db: AsyncSession, raw: EditalRaw) -> bool:
         municipio=raw.municipio,
         texto_extraido=texto_pdf,
         status=EditalStatus.PUBLICADO,
+    )
+    db.add(edital)
+    return True
+
+
+async def processar_lote(
+    db: AsyncSession,
+    editais_raw: list[SourceEditalRaw],
+    fonte: str,
+) -> dict:
+    """
+    Persiste lote de editais de qualquer fonte. Deduplicação por numero_controle.
+    Retorna resumo: { total_recebidos, novos, duplicados, erros }.
+    """
+    log = SyncLog(iniciado_em=datetime.utcnow(), fonte=fonte)
+    db.add(log)
+    await db.flush()
+
+    log.total_encontrados = len(editais_raw)
+    novos = 0
+    erros = 0
+
+    for raw in editais_raw:
+        try:
+            inserido = await _persistir_edital_fonte(db, raw)
+            if inserido:
+                novos += 1
+        except Exception as exc:
+            erros += 1
+            logger.warning("[%s] Falha ao persistir %s: %s", fonte, raw.numero_controle, exc)
+
+    log.total_novos = novos
+    log.status = "concluido"
+    log.finalizado_em = datetime.utcnow()
+    await db.flush()
+
+    return {
+        "fonte": fonte,
+        "total_recebidos": len(editais_raw),
+        "novos": novos,
+        "duplicados": len(editais_raw) - novos - erros,
+        "erros": erros,
+    }
+
+
+async def _persistir_edital_fonte(db: AsyncSession, raw: SourceEditalRaw) -> bool:
+    """Insere edital de qualquer fonte. Retorna True se inserido."""
+    existente = await db.scalar(
+        select(Edital).where(Edital.numero_controle == raw.numero_controle)
+    )
+    if existente:
+        return False
+
+    texto_pdf: str | None = None
+    if raw.link_pdf:
+        try:
+            async with GovMatchScraper(headless=True) as scraper:
+                caminho = await scraper.baixar_pdf(
+                    raw.link_pdf,
+                    f"{raw.numero_controle.replace('/', '_').replace(':', '_')}.pdf",
+                )
+            if caminho:
+                extraido = await processar_pdf(caminho)
+                texto_pdf = extraido.texto_completo
+                if raw.valor_estimado is None and extraido.valor_estimado:
+                    raw.valor_estimado = extraido.valor_estimado
+                if not raw.exclusivo_me and extraido.exclusivo_me:
+                    raw.exclusivo_me = True
+        except Exception as exc:
+            logger.warning("Falha ao processar PDF %s: %s", raw.numero_controle, exc)
+
+    edital = Edital(
+        numero_controle=raw.numero_controle,
+        orgao=raw.orgao,
+        uasg=raw.uasg,
+        objeto=raw.objeto,
+        modalidade=raw.modalidade,
+        valor_estimado=raw.valor_estimado,
+        data_abertura=raw.data_abertura,
+        data_encerramento=raw.data_encerramento,
+        link_edital=raw.link_edital,
+        link_pdf=raw.link_pdf,
+        exclusivo_me=raw.exclusivo_me,
+        estado=raw.estado,
+        municipio=raw.municipio,
+        texto_extraido=texto_pdf,
+        status=EditalStatus.PUBLICADO,
+        fonte=raw.fonte,
     )
     db.add(edital)
     return True
