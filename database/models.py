@@ -34,6 +34,7 @@ class Edital(Base):
     exclusivo_me: Mapped[bool] = mapped_column(Boolean, default=False)
     estado: Mapped[str | None] = mapped_column(String(2), nullable=True)
     municipio: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    fonte: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
     status: Mapped[EditalStatus] = mapped_column(
         Enum(EditalStatus), default=EditalStatus.PUBLICADO, index=True
     )
@@ -64,3 +65,4 @@ class SyncLog(Base):
     total_novos: Mapped[int] = mapped_column(Integer, default=0)
     erro: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="em_andamento")
+    fonte: Mapped[str | None] = mapped_column(String(50), nullable=True)
