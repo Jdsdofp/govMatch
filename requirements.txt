@@ -27,3 +27,7 @@ pdf2image==1.17.0
 
 # easyocr é opcional (pesado, ~1GB). Instale separadamente se necessário:
 # pip install easyocr
+
+# Testes
+pytest>=9.0.0
+pytest-asyncio>=1.0.0
