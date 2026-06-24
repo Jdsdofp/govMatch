@@ -117,4 +117,9 @@ async def root():
 
 @app.get("/health", tags=["Health"])
 async def health():
-    return {"status": "healthy"}
+    return {
+        "status": "healthy",
+        "browser_headless": browser_pool._HEADLESS is not None and browser_pool._HEADLESS.is_connected(),
+        "browser_visible": browser_pool._VISIBLE is not None and browser_pool._VISIBLE.is_connected(),
+        "scheduler_sources": len(scheduler._sources),
+    }
