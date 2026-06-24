@@ -46,6 +46,10 @@ logger = logging.getLogger(__name__)
 # ── instância global do scheduler ────────────────────────────────────────────
 
 scheduler = SchedulerService()
+
+from services.scheduler_registry import set_scheduler
+set_scheduler(scheduler)
+
 scheduler.register(PNCPSource())          # 1h
 scheduler.register(BLLSource())           # 6h
 scheduler.register(BNCSource())           # 6h

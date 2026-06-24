@@ -1,3 +1,4 @@
+import re
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -27,9 +28,14 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
+def _sync_url(url: str) -> str:
+    """Remove async driver suffix so Alembic can use sync engine."""
+    return re.sub(r"\+(aiosqlite|asyncpg|aiomysql)", "", url)
+
+
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
-    url = settings.DATABASE_URL.replace("+aiosqlite", "")
+    url = _sync_url(settings.DATABASE_URL)
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -47,7 +53,7 @@ def run_migrations_online() -> None:
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
-        url=settings.DATABASE_URL.replace("+aiosqlite", ""),
+        url=_sync_url(settings.DATABASE_URL),
     )
 
     with connectable.connect() as connection:

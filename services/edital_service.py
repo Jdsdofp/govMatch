@@ -143,7 +143,14 @@ async def processar_lote(
             logger.warning("[%s] Falha ao persistir %s: %s", fonte, raw.numero_controle, exc)
 
     log.total_novos = novos
-    log.status = "concluido"
+    if erros > 0 and novos == 0:
+        log.status = "erro"
+        log.erro = f"{erros} erros, nenhum edital inserido"
+    elif erros > 0:
+        log.status = "parcial"
+        log.erro = f"{erros} erros, {novos} inseridos"
+    else:
+        log.status = "concluido"
     log.finalizado_em = datetime.utcnow()
     await db.flush()
 

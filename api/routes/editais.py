@@ -79,8 +79,9 @@ async def _executar_sync(
 ) -> None:
     logger.info("Sync %s iniciado | palavras=%s | estado=%s | fonte=%s", job_id, palavras_chave, estado, fonte)
     if fonte:
-        from main import scheduler
+        from services.scheduler_registry import get_scheduler
         from services.edital_service import processar_lote
+        scheduler = get_scheduler()
         source = next((s for s in scheduler._sources if s.source_id == fonte), None)
         if source:
             async with AsyncSessionLocal() as db:
