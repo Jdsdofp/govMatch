@@ -14,6 +14,7 @@ import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from config import settings
+from scraper.sources.pncp import PNCPSource as _PNCPSource
 
 logger = logging.getLogger(__name__)
 
@@ -182,7 +183,31 @@ class GovMatchScraper:
         estado: str | None = None,
         max_paginas: int = 5,
     ) -> list[EditalRaw]:
-        return await _buscar_editais_httpx(palavras_chave, estado, max_paginas)
+        """Delega para PNCPSource para manter compatibilidade com edital_service."""
+        source = _PNCPSource()
+        if estado:
+            source_results = await source._buscar_uf(estado.upper(), palavras_chave, max_paginas)
+        else:
+            source_results = await source.buscar(palavras_chave, None)
+        return [
+            EditalRaw(
+                numero_controle=r.numero_controle,
+                orgao=r.orgao,
+                uasg=r.uasg,
+                objeto=r.objeto,
+                modalidade=r.modalidade,
+                valor_estimado=r.valor_estimado,
+                data_abertura=r.data_abertura,
+                data_encerramento=r.data_encerramento,
+                link_edital=r.link_edital,
+                link_pdf=r.link_pdf,
+                exclusivo_me=r.exclusivo_me,
+                estado=r.estado,
+                municipio=r.municipio,
+                texto_pdf=r.texto_pdf,
+            )
+            for r in source_results
+        ]
 
     async def baixar_pdf(self, url_pdf: str, nome_arquivo: str) -> Path | None:
         return await asyncio.to_thread(_baixar_pdf_sync, url_pdf, nome_arquivo, self._headless)
