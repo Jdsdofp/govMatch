@@ -19,6 +19,7 @@ class EditalSchema(BaseModel):
     exclusivo_me: bool
     estado: str | None
     municipio: str | None
+    fonte: str | None
     status: str
     criado_em: datetime
 

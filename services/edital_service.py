@@ -220,6 +220,7 @@ async def listar_editais(
     exclusivo_me: bool | None = None,
     modalidade: str | None = None,
     status: EditalStatus | None = None,
+    fonte: str | None = None,
     pagina: int = 1,
     por_pagina: int = 20,
 ) -> tuple[list[Edital], int]:
@@ -250,6 +251,9 @@ async def listar_editais(
 
     if status:
         stmt = stmt.where(Edital.status == status)
+
+    if fonte:
+        stmt = stmt.where(Edital.fonte == fonte)
 
     # Total para paginação
     from sqlalchemy import func

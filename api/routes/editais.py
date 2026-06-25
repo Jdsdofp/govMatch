@@ -152,6 +152,10 @@ async def listar_editais(
         EditalStatus | None,
         Query(description="Status do edital"),
     ] = None,
+    fonte: Annotated[
+        str | None,
+        Query(description="ID da fonte: pncp, bll, bnc, tce_sp, tce_mg, tce_rs, etc."),
+    ] = None,
     pagina: Annotated[int, Query(ge=1)] = 1,
     por_pagina: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> EditalListaSchema:
@@ -162,6 +166,7 @@ async def listar_editais(
         exclusivo_me=exclusivo_me,
         modalidade=modalidade,
         status=status,
+        fonte=fonte,
         pagina=pagina,
         por_pagina=por_pagina,
     )
