@@ -41,6 +41,7 @@ from scraper.sources.tce_pe import TCEPESource
 from scraper.sources.tce_am import TCEAMSource
 from scraper.sources.tce_pb import TCEPBSource
 from scraper.sources.tce_se import TCESESource
+from scraper.sources.tce_pi import TCEPISource
 from services.scheduler_service import SchedulerService
 
 logging.basicConfig(
@@ -71,6 +72,7 @@ scheduler.register(TCEPESource())         # 24h
 scheduler.register(TCEAMSource())         # 24h
 scheduler.register(TCEPBSource())         # 24h
 scheduler.register(TCESESource())         # 6h
+scheduler.register(TCEPISource())         # 24h
 
 
 # ── lifecycle ────────────────────────────────────────────────────────────────
