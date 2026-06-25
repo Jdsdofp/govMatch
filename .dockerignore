@@ -23,7 +23,6 @@ tmp/
 .git/
 .gitignore
 .superpowers/
-alembic.ini
 
 # Testes (não necessários na imagem de produção)
 tests/
