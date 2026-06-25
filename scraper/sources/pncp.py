@@ -11,7 +11,7 @@ from scraper.sources.base import BaseSource, EditalRaw
 
 logger = logging.getLogger(__name__)
 
-PNCP_API_BASE = "https://pncp.gov.br/api/pncp/v1"
+PNCP_API_BASE = "https://pncp.gov.br/api/consulta/v1"
 HEADERS = {
     "Accept": "application/json",
     "User-Agent": (
@@ -21,11 +21,8 @@ HEADERS = {
     ),
 }
 
-UFS_BRASIL = [
-    "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA",
-    "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN",
-    "RS", "RO", "RR", "SC", "SP", "SE", "TO",
-]
+# Modalidades válidas na nova API (2 = Diálogo Competitivo retorna 204)
+MODALIDADES = [1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
 
 class PNCPSource(BaseSource):
@@ -37,14 +34,20 @@ class PNCPSource(BaseSource):
         palavras_chave: list[str] | None = None,
         estado: str | None = None,
     ) -> list[EditalRaw]:
-        ufs = [estado.upper()] if estado else UFS_BRASIL
-        tarefas = [self._buscar_uf(uf, palavras_chave) for uf in ufs]
-        resultados = await asyncio.gather(*tarefas, return_exceptions=True)
+        # Executa em grupos de 3 para respeitar rate limit da API PNCP
+        resultados = []
+        for i in range(0, len(MODALIDADES), 3):
+            grupo = MODALIDADES[i:i+3]
+            tarefas = [self._buscar_modalidade(mod, palavras_chave, estado) for mod in grupo]
+            res = await asyncio.gather(*tarefas, return_exceptions=True)
+            resultados.extend(zip(grupo, res))
+            if i + 3 < len(MODALIDADES):
+                await asyncio.sleep(1.0)
 
         editais: list[EditalRaw] = []
-        for uf, res in zip(ufs, resultados):
+        for mod, res in resultados:
             if isinstance(res, Exception):
-                logger.error("Erro ao buscar PNCP para UF=%s: %s", uf, res)
+                logger.error("[PNCP] Erro modalidade=%d: %s", mod, res)
             else:
                 editais.extend(res)
 
@@ -52,10 +55,11 @@ class PNCPSource(BaseSource):
         return editais
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=8))
-    async def _buscar_uf(
+    async def _buscar_modalidade(
         self,
-        uf: str,
+        modalidade: int,
         palavras_chave: list[str] | None,
+        estado: str | None,
         max_paginas: int = 5,
     ) -> list[EditalRaw]:
         resultados: list[EditalRaw] = []
@@ -66,24 +70,24 @@ class PNCPSource(BaseSource):
         async with httpx.AsyncClient(headers=HEADERS, timeout=30, follow_redirects=True) as client:
             for pagina in range(1, max_paginas + 1):
                 params = {
+                    "codigoModalidadeContratacao": modalidade,
                     "dataInicial": data_ini,
                     "dataFinal": data_fim,
                     "pagina": pagina,
                     "tamanhoPagina": 20,
-                    "uf": uf,
                 }
                 try:
                     resp = await client.get(
-                        f"{PNCP_API_BASE}/contratacoes/publicadas", params=params
+                        f"{PNCP_API_BASE}/contratacoes/publicacao", params=params
                     )
                 except Exception as exc:
-                    logger.error("[PNCP/%s] Erro de rede pág %d: %s", uf, pagina, exc)
+                    logger.error("[PNCP/mod=%d] Erro de rede pág %d: %s", modalidade, pagina, exc)
                     break
 
-                if resp.status_code in (404, 204):
+                if resp.status_code in (204, 404):
                     break
                 if resp.status_code != 200:
-                    logger.warning("[PNCP/%s] Status %d pág %d", uf, resp.status_code, pagina)
+                    logger.warning("[PNCP/mod=%d] Status %d pág %d", modalidade, resp.status_code, pagina)
                     break
 
                 try:
@@ -91,11 +95,17 @@ class PNCPSource(BaseSource):
                 except Exception:
                     break
 
-                itens = dados if isinstance(dados, list) else dados.get("data", [])
+                itens = dados.get("data", [])
                 if not itens:
                     break
 
                 for item in itens:
+                    # Filtra por UF no response (nova API não tem parâmetro uf)
+                    if estado:
+                        uf_item = item.get("unidadeOrgao", {}).get("ufSigla", "")
+                        if uf_item.upper() != estado.upper():
+                            continue
+
                     edital = _mapear_item_pncp(item)
                     if edital is None:
                         continue
@@ -105,22 +115,27 @@ class PNCPSource(BaseSource):
                             continue
                     resultados.append(edital)
 
-                total_paginas = (
-                    dados.get("totalPaginas", pagina) if isinstance(dados, dict) else pagina
-                )
+                total_paginas = dados.get("totalPaginas", pagina)
                 if pagina >= total_paginas:
                     break
 
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.3)
 
         return resultados
 
     async def testar_conexao(self) -> bool:
         try:
+            hoje = date.today()
             async with httpx.AsyncClient(headers=HEADERS, timeout=10) as client:
                 r = await client.get(
-                    f"{PNCP_API_BASE}/contratacoes/publicadas",
-                    params={"dataInicial": "20240101", "dataFinal": "20240102", "pagina": 1, "tamanhoPagina": 1},
+                    f"{PNCP_API_BASE}/contratacoes/publicacao",
+                    params={
+                        "codigoModalidadeContratacao": 8,
+                        "dataInicial": (hoje - timedelta(days=1)).strftime("%Y%m%d"),
+                        "dataFinal": hoje.strftime("%Y%m%d"),
+                        "pagina": 1,
+                        "tamanhoPagina": 10,
+                    },
                 )
                 return r.status_code < 500
         except Exception:

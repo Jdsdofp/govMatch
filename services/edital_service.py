@@ -3,7 +3,7 @@ Camada de serviço — orquestra scraper, OCR e persistência no banco.
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,7 +28,7 @@ async def sincronizar_editais(
     Dispara o scraper, processa PDFs e persiste editais novos no banco.
     Retorna um resumo da operação para o SyncLog.
     """
-    log = SyncLog(iniciado_em=datetime.utcnow())
+    log = SyncLog(iniciado_em=datetime.now(timezone.utc))
     db.add(log)
     await db.flush()
 
@@ -57,7 +57,7 @@ async def sincronizar_editais(
         logger.error("Erro no sync: %s", exc)
 
     finally:
-        log.finalizado_em = datetime.utcnow()
+        log.finalizado_em = datetime.now(timezone.utc)
         await db.flush()
 
     return {
@@ -125,7 +125,7 @@ async def processar_lote(
     Persiste lote de editais de qualquer fonte. Deduplicação por numero_controle.
     Retorna resumo: { total_recebidos, novos, duplicados, erros }.
     """
-    log = SyncLog(iniciado_em=datetime.utcnow(), fonte=fonte)
+    log = SyncLog(iniciado_em=datetime.now(timezone.utc), fonte=fonte)
     db.add(log)
     await db.flush()
 
@@ -151,7 +151,7 @@ async def processar_lote(
         log.erro = f"{erros} erros, {novos} inseridos"
     else:
         log.status = "concluido"
-    log.finalizado_em = datetime.utcnow()
+    log.finalizado_em = datetime.now(timezone.utc)
     await db.flush()
 
     return {

@@ -53,3 +53,14 @@ async def test_processar_lote_retorna_fonte(db_session):
     editais = [make_edital("bll:003")]
     resultado = await processar_lote(db_session, editais, "bll")
     assert resultado["fonte"] == "bll"
+
+
+@pytest.mark.asyncio
+async def test_processar_lote_sem_deprecation_warning(db_session):
+    """processar_lote não deve usar datetime.utcnow() (deprecated no Python 3.12+)."""
+    import warnings
+    editais = [make_edital("bll:004")]
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        resultado = await processar_lote(db_session, editais, "bll")
+    assert resultado["novos"] == 1

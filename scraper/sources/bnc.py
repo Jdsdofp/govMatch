@@ -1,16 +1,19 @@
-"""Fonte BNC — Banco Nacional de Contratações Públicas (bnc.org.br)."""
+"""Fonte BNC — BNC Compras (bnccompras.com) — mesma estrutura que BLL."""
 import logging
 
 from scraper import browser_pool
 from scraper.sources.base import BaseSource, EditalRaw
+from scraper.sources.bll import BLLSource
 
 logger = logging.getLogger(__name__)
+
+_BASE = "https://bnccompras.com"
 
 
 class BNCSource(BaseSource):
     source_id = "bnc"
     interval_seconds = 21600
-    _base_url = "https://www.bnc.org.br/licitacoes"
+    _base_url = f"{_BASE}/Process/ProcessSearchPublic?param1=0"
 
     async def buscar(
         self,
@@ -18,23 +21,27 @@ class BNCSource(BaseSource):
         estado: str | None = None,
     ) -> list[EditalRaw]:
         editais: list[EditalRaw] = []
-        ctx, page = await browser_pool.new_page(headless=True)
+        ctx, page = await browser_pool.new_page(headless=True, block_resources=False)
         try:
-            await page.goto(self._base_url, wait_until="domcontentloaded", timeout=30_000)
+            await page.goto(self._base_url, wait_until="networkidle", timeout=40_000)
             await browser_pool.random_delay(800, 1400)
 
-            await page.wait_for_selector(".licitacao-item, table.licitacoes, #lista-licitacoes", timeout=15_000)
+            await page.wait_for_selector("#tableProcessData tbody tr", timeout=20_000)
 
-            items = await page.query_selector_all(".licitacao-item, table tr.licitacao")
-            for item in items:
-                edital = await self._parse_item(item)
+            # Reutiliza parser do BLL — mesma estrutura de tabela
+            _bll = BLLSource()
+            links = await page.query_selector_all("a[href*='ProcessView']")
+            for link_el in links:
+                edital = await _bll._parse_link_row(link_el, estado)
                 if edital:
+                    edital = EditalRaw(
+                        **{**edital.__dict__, "fonte": "bnc",
+                           "numero_controle": edital.numero_controle.replace("bll:", "bnc:", 1)}
+                    )
                     if palavras_chave:
                         texto = f"{edital.objeto} {edital.orgao}".lower()
                         if not all(p.lower() in texto for p in palavras_chave):
                             continue
-                    if estado and edital.estado and edital.estado.upper() != estado.upper():
-                        continue
                     editais.append(edital)
 
             logger.info("[BNC] %d editais encontrados", len(editais))
@@ -45,51 +52,8 @@ class BNCSource(BaseSource):
 
         return editais
 
-    async def _parse_item(self, item) -> EditalRaw | None:
-        try:
-            numero = None
-            for sel in (".numero-licitacao", "td:nth-child(1)", "[data-numero]"):
-                el = await item.query_selector(sel)
-                if el:
-                    numero = (await el.inner_text()).strip()
-                    break
-
-            objeto = ""
-            for sel in (".objeto-licitacao", "td:nth-child(3)", ".descricao"):
-                el = await item.query_selector(sel)
-                if el:
-                    objeto = (await el.inner_text()).strip()
-                    break
-
-            orgao = ""
-            for sel in (".orgao-licitacao", "td:nth-child(2)", ".entidade"):
-                el = await item.query_selector(sel)
-                if el:
-                    orgao = (await el.inner_text()).strip()
-                    break
-
-            link_el = await item.query_selector("a[href]")
-            link = await link_el.get_attribute("href") if link_el else None
-            if link and not link.startswith("http"):
-                link = f"https://www.bnc.org.br{link}"
-
-            if not numero:
-                return None
-
-            return EditalRaw(
-                numero_controle=f"bnc:{numero}",
-                orgao=orgao,
-                objeto=objeto,
-                modalidade="",
-                fonte="bnc",
-                link_edital=link,
-            )
-        except Exception as exc:
-            logger.warning("[BNC] Erro ao parsear item: %s", exc)
-            return None
-
     async def testar_conexao(self) -> bool:
-        ctx, page = await browser_pool.new_page(headless=True)
+        ctx, page = await browser_pool.new_page(headless=True, block_resources=False)
         try:
             resp = await page.goto(self._base_url, wait_until="domcontentloaded", timeout=15_000)
             return resp is not None and resp.status < 500
