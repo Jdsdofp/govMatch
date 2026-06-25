@@ -34,6 +34,8 @@ from scraper.sources.licitacoes_e import LicitacoesESource
 from scraper.sources.tce_sp import TCESPSource
 from scraper.sources.tce_mg import TCEMGSource
 from scraper.sources.tce_rs import TCERSSource
+from scraper.sources.tce_ro import TCEROSource
+from scraper.sources.tce_rn import TCERNSource
 from services.scheduler_service import SchedulerService
 
 logging.basicConfig(
@@ -56,7 +58,9 @@ scheduler.register(BNCSource())           # 6h
 scheduler.register(LicitacoesESource())   # 6h
 scheduler.register(TCESPSource())         # 6h
 scheduler.register(TCEMGSource())         # 6h
-scheduler.register(TCERSSource())         # 6h
+scheduler.register(TCERSSource())         # 24h
+scheduler.register(TCEROSource())         # 6h
+scheduler.register(TCERNSource())         # 6h
 
 
 # ── lifecycle ────────────────────────────────────────────────────────────────

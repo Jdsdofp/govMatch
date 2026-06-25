@@ -4,6 +4,8 @@ import pytest
 from scraper.sources.tce_sp import TCESPSource
 from scraper.sources.tce_mg import TCEMGSource
 from scraper.sources.tce_rs import TCERSSource
+from scraper.sources.tce_ro import TCEROSource
+from scraper.sources.tce_rn import TCERNSource
 
 
 def test_tce_sp_ids():
@@ -42,6 +44,32 @@ async def test_tce_mg_filtra_estado_errado():
 @pytest.mark.asyncio
 async def test_tce_rs_filtra_estado_errado():
     s = TCERSSource()
+    result = await s.buscar(estado="SP")
+    assert result == []
+
+
+def test_tce_ro_ids():
+    s = TCEROSource()
+    assert s.source_id == "tce_ro"
+    assert s.interval_seconds == 21600
+
+
+def test_tce_rn_ids():
+    s = TCERNSource()
+    assert s.source_id == "tce_rn"
+    assert s.interval_seconds == 21600
+
+
+@pytest.mark.asyncio
+async def test_tce_ro_filtra_estado_errado():
+    s = TCEROSource()
+    result = await s.buscar(estado="SP")
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_tce_rn_filtra_estado_errado():
+    s = TCERNSource()
     result = await s.buscar(estado="SP")
     assert result == []
 
