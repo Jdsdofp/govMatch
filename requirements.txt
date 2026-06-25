@@ -19,6 +19,7 @@ python-dotenv==1.0.1
 playwright==1.49.0
 httpx==0.28.0
 tenacity==9.0.0
+openpyxl>=3.1.0
 
 # PDF e OCR
 pdfplumber==0.11.4
