@@ -63,9 +63,10 @@ class TCEPESource(BaseSource):
 
     async def testar_conexao(self) -> bool:
         try:
+            # stream para não baixar os 100k registros só para checar conexão
             async with httpx.AsyncClient(headers=_HEADERS, timeout=15, verify=False) as c:
-                r = await c.get(_URL)
-                return r.status_code == 200
+                async with c.stream("GET", _URL) as r:
+                    return r.status_code == 200
         except Exception:
             return False
 

@@ -1,7 +1,7 @@
 """Fonte TCE-RO — transparencia.tcero.tc.br (API REST pública).
 
-Endpoint: GET /api/licitacoes?page=N&size=N
-Retorna JSON com campos completos de licitações do próprio TCE-RO.
+Endpoint: GET /api/licitacoes
+A API ignora parâmetros de paginação e retorna todos os registros de uma vez.
 Sem autenticação, sem CAPTCHA.
 """
 import logging
@@ -18,8 +18,6 @@ _HEADERS = {
     "Accept": "application/json",
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
 }
-_PAGE_SIZE = 100
-
 
 class TCEROSource(BaseSource):
     source_id = "tce_ro"
@@ -34,32 +32,25 @@ class TCEROSource(BaseSource):
             return []
 
         editais: list[EditalRaw] = []
-        page = 0
-        async with httpx.AsyncClient(headers=_HEADERS, timeout=30, follow_redirects=True) as c:
-            while True:
-                try:
-                    r = await c.get(_BASE, params={"page": page, "size": _PAGE_SIZE})
-                    if r.status_code != 200:
-                        logger.warning("[TCE-RO] HTTP %d na página %d", r.status_code, page)
-                        break
-                    itens = r.json()
-                    if not itens:
-                        break
-                    for item in itens:
-                        edital = _mapear(item)
-                        if edital is None:
+        try:
+            async with httpx.AsyncClient(headers=_HEADERS, timeout=60, follow_redirects=True) as c:
+                r = await c.get(_BASE)
+                if r.status_code != 200:
+                    logger.warning("[TCE-RO] HTTP %d", r.status_code)
+                    return []
+                itens = r.json()
+                for item in itens:
+                    edital = _mapear(item)
+                    if edital is None:
+                        continue
+                    if palavras_chave:
+                        texto = f"{edital.objeto} {edital.orgao}".lower()
+                        if not all(p.lower() in texto for p in palavras_chave):
                             continue
-                        if palavras_chave:
-                            texto = f"{edital.objeto} {edital.orgao}".lower()
-                            if not all(p.lower() in texto for p in palavras_chave):
-                                continue
-                        editais.append(edital)
-                    if len(itens) < _PAGE_SIZE:
-                        break
-                    page += 1
-                except Exception as exc:
-                    logger.error("[TCE-RO] Erro na página %d: %s", page, exc)
-                    break
+                    editais.append(edital)
+        except Exception as exc:
+            logger.error("[TCE-RO] Erro ao buscar: %s", exc)
+            return []
 
         logger.info("[TCE-RO] %d editais encontrados", len(editais))
         return editais
