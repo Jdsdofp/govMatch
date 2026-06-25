@@ -65,7 +65,7 @@ async def sincronizar(
     )
 
     return SyncResponseSchema(
-        mensagem=f"Sincronização iniciada{'para ' + fonte if fonte else ' em background.'}",
+        mensagem=f"Sincronização iniciada{' para ' + fonte if fonte else ' em background.'}",
         job_id=job_id,
     )
 

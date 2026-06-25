@@ -1,4 +1,4 @@
-"""Smoke tests de estrutura para fontes TCE."""
+﻿"""Smoke tests de estrutura para fontes TCE."""
 import asyncio
 import pytest
 from scraper.sources.tce_sp import TCESPSource
@@ -21,7 +21,7 @@ def test_tce_mg_ids():
 def test_tce_rs_ids():
     s = TCERSSource()
     assert s.source_id == "tce_rs"
-    assert s.interval_seconds == 21600
+    assert s.interval_seconds == 86400
 
 
 @pytest.mark.asyncio
@@ -44,3 +44,4 @@ async def test_tce_rs_filtra_estado_errado():
     s = TCERSSource()
     result = await s.buscar(estado="SP")
     assert result == []
+
