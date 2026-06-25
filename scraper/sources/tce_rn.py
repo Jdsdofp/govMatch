@@ -23,7 +23,7 @@ _HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
 }
 _DIAS_RETROATIVOS = 30
-_MAX_UNIDADES = 200  # limita para não sobrecarregar — cobre os maiores municípios
+_MAX_UNIDADES = 50  # cobre os maiores municípios sem timeout no scheduler
 
 
 class TCERNSource(BaseSource):
