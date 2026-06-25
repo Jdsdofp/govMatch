@@ -1,5 +1,3 @@
-apiVersion: render/v1
-
 services:
   - type: web
     name: govmatch-api
