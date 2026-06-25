@@ -7,6 +7,7 @@ from scraper.sources.tce_rs import TCERSSource
 from scraper.sources.tce_ro import TCEROSource
 from scraper.sources.tce_rn import TCERNSource
 from scraper.sources.tce_ma import TCEMASource
+from scraper.sources.tce_pe import TCEPESource
 
 
 def test_tce_sp_ids():
@@ -84,6 +85,19 @@ def test_tce_ma_ids():
 @pytest.mark.asyncio
 async def test_tce_ma_filtra_estado_errado():
     s = TCEMASource()
+    result = await s.buscar(estado="SP")
+    assert result == []
+
+
+def test_tce_pe_ids():
+    s = TCEPESource()
+    assert s.source_id == "tce_pe"
+    assert s.interval_seconds == 86400
+
+
+@pytest.mark.asyncio
+async def test_tce_pe_filtra_estado_errado():
+    s = TCEPESource()
     result = await s.buscar(estado="SP")
     assert result == []
 
