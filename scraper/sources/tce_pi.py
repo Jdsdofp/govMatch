@@ -1,45 +1,34 @@
 """Fonte TCE-PI — sistemas.tce.pi.gov.br/muralic (JSF/PrimeFaces portal).
 
-Fluxo:
-  1. GET /muralic/ → obtém jsessionid (cookie) e ViewState (hidden input)
-  2. POST AJAX com filtro ug_input=Teresina → pesquisa licitações
-  3. POST AJAX para exportar → baixa planilha Excel (.xlsx) com todos os registros
-  4. Parseia o Excel com openpyxl
+Usa Playwright porque o portal JSF vincula o estado da sessão ao ViewState
+do servidor — não é possível reproduzir o fluxo com httpx puro.
 
-Cobertura: municípios de Teresina (PI) — único município disponível via filtro público.
-O portal retorna ~10.000 licitações de Teresina por exportação.
+Fluxo:
+  1. Navegar para /muralic/
+  2. Preencher filtro Órgão/UG com "Teresina"
+  3. Clicar em Pesquisar e aguardar resultados (~10k licitações)
+  4. Interceptar o download ao clicar em "exportar para planilha excel"
+  5. Parsear o Excel com openpyxl
+
+Cobertura: municípios de Teresina (PI).
 """
 import io
 import logging
-import re
 from datetime import datetime
 
-import httpx
 import openpyxl
 
+from scraper import browser_pool
 from scraper.sources.base import BaseSource, EditalRaw
 
 logger = logging.getLogger(__name__)
 
-_BASE = "https://sistemas.tce.pi.gov.br/muralic"
-_INDEX = f"{_BASE}/index.xhtml"
-_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "pt-BR,pt;q=0.9",
-}
-_AJAX_HEADERS = {
-    **_HEADERS,
-    "Accept": "application/xml, text/xml, */*; q=0.01",
-    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-    "Faces-Request": "partial/ajax",
-    "X-Requested-With": "XMLHttpRequest",
-}
+_URL = "https://sistemas.tce.pi.gov.br/muralic/"
 
 
 class TCEPISource(BaseSource):
     source_id = "tce_pi"
-    interval_seconds = 86400  # 24h — exportação completa, sem filtro de data
+    interval_seconds = 86400  # 24h
 
     async def buscar(
         self,
@@ -49,61 +38,8 @@ class TCEPISource(BaseSource):
         if estado and estado.upper() != "PI":
             return []
 
-        try:
-            async with httpx.AsyncClient(
-                headers=_HEADERS,
-                timeout=120,
-                follow_redirects=True,
-                verify=False,
-            ) as c:
-                # 1. GET para obter session cookie + ViewState
-                r = await c.get(_INDEX)
-                if r.status_code != 200:
-                    logger.warning("[TCE-PI] GET inicial HTTP %d", r.status_code)
-                    return []
-
-                view_state = _extrair_viewstate(r.text)
-                jsessionid = _extrair_jsessionid(str(r.url))
-                if not view_state:
-                    logger.error("[TCE-PI] ViewState não encontrado na página inicial")
-                    return []
-
-                url_post = f"{_INDEX};jsessionid={jsessionid}" if jsessionid else _INDEX
-
-                # 2. POST AJAX para pesquisar com filtro Teresina
-                payload_pesq = _payload_pesquisar(view_state)
-                r2 = await c.post(url_post, content=payload_pesq, headers=_AJAX_HEADERS)
-                if r2.status_code != 200:
-                    logger.warning("[TCE-PI] POST pesquisa HTTP %d", r2.status_code)
-                    return []
-
-                # ViewState pode ter sido atualizado na resposta AJAX
-                novo_vs = _extrair_viewstate_xml(r2.text)
-                if novo_vs:
-                    view_state = novo_vs
-
-                # 3. POST AJAX para exportar Excel
-                payload_exp = _payload_exportar(view_state)
-                r3 = await c.post(url_post, content=payload_exp, headers=_AJAX_HEADERS)
-
-                # A exportação pode retornar o arquivo diretamente ou via redirect
-                xlsx_bytes = None
-                content_type = r3.headers.get("content-type", "")
-                if "spreadsheet" in content_type or "excel" in content_type or "octet" in content_type:
-                    xlsx_bytes = r3.content
-                elif "xml" in content_type or "html" in content_type:
-                    # Resposta AJAX com redirect para o arquivo
-                    download_url = _extrair_download_url(r3.text)
-                    if download_url:
-                        r4 = await c.get(download_url)
-                        xlsx_bytes = r4.content
-
-                if not xlsx_bytes:
-                    logger.error("[TCE-PI] Não foi possível obter o arquivo Excel")
-                    return []
-
-        except Exception as exc:
-            logger.error("[TCE-PI] Erro ao buscar: %s", exc)
+        xlsx_bytes = await _baixar_excel_playwright()
+        if not xlsx_bytes:
             return []
 
         editais = _processar_excel(xlsx_bytes, palavras_chave)
@@ -112,101 +48,57 @@ class TCEPISource(BaseSource):
 
     async def testar_conexao(self) -> bool:
         try:
+            import httpx
             async with httpx.AsyncClient(timeout=15, follow_redirects=True, verify=False) as c:
-                r = await c.get(_INDEX)
+                r = await c.get(_URL)
                 return r.status_code == 200
         except Exception:
             return False
 
 
-# ── helpers de extração ───────────────────────────────────────────────────────
+async def _baixar_excel_playwright() -> bytes | None:
+    context, page = await browser_pool.new_page(headless=True, block_resources=False)
+    try:
+        # Navegar para o portal
+        await page.goto(_URL, wait_until="networkidle", timeout=30000)
 
-def _extrair_viewstate(html: str) -> str | None:
-    m = re.search(r'id="javax\.faces\.ViewState"[^>]*value="([^"]+)"', html)
-    if m:
-        return m.group(1)
-    m = re.search(r'name="javax\.faces\.ViewState"[^>]*value="([^"]+)"', html)
-    return m.group(1) if m else None
+        # O portal abre um modal — clicar em "MURAL DE LICITAÇÕES"
+        try:
+            btn_mural = page.get_by_role("button", name="MURAL DE LICITAÇÕES")
+            if await btn_mural.is_visible(timeout=5000):
+                await btn_mural.click()
+                await page.wait_for_load_state("networkidle", timeout=15000)
+        except Exception:
+            pass  # Modal pode não aparecer em todas as sessões
 
+        # Preencher filtro Órgão/UG com "Teresina"
+        campo_ug = page.get_by_placeholder("informe parte do nome do órgão ou município, etc")
+        await campo_ug.fill("Teresina")
 
-def _extrair_viewstate_xml(xml: str) -> str | None:
-    m = re.search(r'<update id="javax\.faces\.ViewState[^"]*"><!\[CDATA\[([^\]]+)\]\]>', xml)
-    return m.group(1) if m else None
+        # Clicar em Pesquisar e aguardar resultados
+        await page.get_by_role("button", name="Pesquisar").click()
+        await page.wait_for_selector("text=lic.", timeout=30000)
 
+        # Interceptar download ao clicar em exportar
+        async with page.expect_download(timeout=60000) as download_info:
+            await page.get_by_role("link", name="exportar para planilha excel").click()
 
-def _extrair_jsessionid(url: str) -> str | None:
-    m = re.search(r"jsessionid=([A-Za-z0-9._-]+)", url)
-    return m.group(1) if m else None
+        download = await download_info.value
+        stream = await download.failure()
+        if stream:
+            logger.error("[TCE-PI] Falha no download: %s", stream)
+            return None
 
+        # Ler bytes do arquivo
+        path = await download.path()
+        with open(path, "rb") as f:
+            return f.read()
 
-def _extrair_download_url(xml: str) -> str | None:
-    m = re.search(r'window\.location\s*=\s*[\'"]([^\'"]+)[\'"]', xml)
-    return m.group(1) if m else None
-
-
-def _payload_pesquisar(view_state: str) -> bytes:
-    from urllib.parse import urlencode
-    data = {
-        "javax.faces.partial.ajax": "true",
-        "javax.faces.source": "btnPesquisar",
-        "javax.faces.partial.execute": "j_idt20",
-        "javax.faces.partial.render": "growl j_idt20 formListaLic:listaLic",
-        "btnPesquisar": "btnPesquisar",
-        "j_idt20": "j_idt20",
-        "tvPrincipal:j_idt25_focus": "",
-        "tvPrincipal:j_idt25_input": "POR_PROCESSO_LICITATORIO",
-        "tvPrincipal:j_idt30": "",
-        "tvPrincipal:j_idt34_input": "",
-        "tvPrincipal:j_idt34_hinput": "",
-        "tvPrincipal:status_focus": "",
-        "tvPrincipal:status_input": "0",
-        "tvPrincipal:ug_input": "Teresina",
-        "tvPrincipal:mod_focus": "",
-        "tvPrincipal:mod_input": "",
-        "tvPrincipal:j_idt52": "",
-        "tvPrincipal:dataAberturaInicial_input": "",
-        "tvPrincipal:dataAberturaFinal_input": "",
-        "tvPrincipal:tvMaisFiltros:j_idt62_focus": "",
-        "tvPrincipal:tvMaisFiltros:j_idt62_input": "POR_PROCESSO_LICITATORIO",
-        "tvPrincipal:tvMaisFiltros:j_idt67": "",
-        "tvPrincipal:tvMaisFiltros:j_idt69_input": "",
-        "tvPrincipal:tvMaisFiltros:j_idt69_hinput": "",
-        "tvPrincipal:tvMaisFiltros:status2_focus": "",
-        "tvPrincipal:tvMaisFiltros:status2_input": "0",
-        "tvPrincipal:tvMaisFiltros:regimeJuridico_focus": "",
-        "tvPrincipal:tvMaisFiltros:regimeJuridico_input": "",
-        "tvPrincipal:tvMaisFiltros:mod_focus": "",
-        "tvPrincipal:tvMaisFiltros:mod_input": "",
-        "tvPrincipal:tvMaisFiltros:procedContratacao_focus": "",
-        "tvPrincipal:tvMaisFiltros:procedContratacao_input": "",
-        "tvPrincipal:tvMaisFiltros:meEpp_focus": "",
-        "tvPrincipal:tvMaisFiltros:meEpp_input": "",
-        "tvPrincipal:tvMaisFiltros:tipoLic_focus": "",
-        "tvPrincipal:tvMaisFiltros:tipoLic_input": "",
-        "tvPrincipal:tvMaisFiltros:fr_focus": "",
-        "tvPrincipal:tvMaisFiltros:fr_input": "",
-        "tvPrincipal:tvMaisFiltros:srp_focus": "",
-        "tvPrincipal:tvMaisFiltros:srp_input": "",
-        "tvPrincipal:tvMaisFiltros_activeIndex": "0",
-        "tvPrincipal_activeIndex": "0",
-        "javax.faces.ViewState": view_state,
-    }
-    return urlencode(data).encode("utf-8")
-
-
-def _payload_exportar(view_state: str) -> bytes:
-    from urllib.parse import urlencode
-    data = {
-        "javax.faces.partial.ajax": "true",
-        "javax.faces.source": "formListaLic:listaLic:j_idt290",
-        "javax.faces.partial.execute": "@all",
-        "formListaLic:listaLic:j_idt290": "formListaLic:listaLic:j_idt290",
-        "formListaLic": "formListaLic",
-        "formListaLic:listaLic_reflowDD": "0_0",
-        "formListaLic:listaLic_rppDD": "8",
-        "javax.faces.ViewState": view_state,
-    }
-    return urlencode(data).encode("utf-8")
+    except Exception as exc:
+        logger.error("[TCE-PI] Erro no Playwright: %s", exc)
+        return None
+    finally:
+        await context.close()
 
 
 # ── processamento do Excel ────────────────────────────────────────────────────
@@ -216,7 +108,6 @@ def _processar_excel(xlsx_bytes: bytes, palavras_chave: list[str] | None) -> lis
     try:
         wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes))
         ws = wb.active
-        # Linha 1 = cabeçalho, dados a partir da linha 2
         for row in ws.iter_rows(min_row=2, values_only=True):
             edital = _mapear_linha(row)
             if edital is None:
@@ -235,13 +126,12 @@ def _mapear_linha(row: tuple) -> EditalRaw | None:
     try:
         # Colunas (0-indexed): orgao, esfera, nr_proc_tce, nr_procedimento,
         # regime, modalidade, forma, criterio, tipo_objeto, objeto,
-        # dt_abert, valor, status, dt_ult_public, dt_adjud, dt_homolog,
-        # dt_final, dt_cadastro, dt_ult_atual, link
+        # dt_abert, valor, status, ..., link (19)
         if not row or len(row) < 13:
             return None
         orgao = str(row[0] or "").strip()
-        nr_proc_tce = str(row[2] or "").strip()   # ex: LW-007256/26
-        nr_procedimento = str(row[3] or "").strip()  # ex: Pregão nº PE 90058/2026
+        nr_proc_tce = str(row[2] or "").strip()       # ex: LW-007256/26
+        nr_procedimento = str(row[3] or "").strip()   # ex: Pregão nº PE 90058/2026
         modalidade = str(row[5] or "").strip()
         objeto = str(row[9] or "").strip()
         dt_abert = _parse_data(row[10])
