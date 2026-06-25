@@ -40,9 +40,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Instalar Chromium via Playwright (usa o binário do sistema quando disponível)
-ENV PLAYWRIGHT_BROWSERS_PATH=/usr/lib/chromium
-RUN playwright install chromium --with-deps || true
+# Instalar dependências de sistema do Playwright (sem baixar browser — usa o chromium do apt)
+RUN playwright install-deps chromium || true
 
 # Copiar código
 COPY . .

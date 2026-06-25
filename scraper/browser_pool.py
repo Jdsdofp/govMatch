@@ -10,6 +10,8 @@ from playwright.async_api import Browser, BrowserContext, Page, Playwright, asyn
 
 logger = logging.getLogger(__name__)
 
+import os
+
 _LAUNCH_ARGS = [
     "--no-sandbox",
     "--disable-setuid-sandbox",
@@ -17,6 +19,9 @@ _LAUNCH_ARGS = [
     "--disable-dev-shm-usage",
     "--lang=pt-BR",
 ]
+
+# Em produção usa o Chromium do sistema; em dev usa o Playwright padrão
+_CHROMIUM_EXECUTABLE = os.environ.get("CHROMIUM_EXECUTABLE_PATH") or None
 
 _HEADLESS: Browser | None = None
 _VISIBLE: Browser | None = None
@@ -45,13 +50,21 @@ async def get_browser(headless: bool = True) -> Browser:
         if headless:
             if _HEADLESS is None or not _HEADLESS.is_connected():
                 pw = await _ensure_pw()
-                _HEADLESS = await pw.chromium.launch(headless=True, args=_LAUNCH_ARGS)
+                _HEADLESS = await pw.chromium.launch(
+                    headless=True,
+                    args=_LAUNCH_ARGS,
+                    executable_path=_CHROMIUM_EXECUTABLE,
+                )
                 logger.info("Browser headless iniciado")
             return _HEADLESS
         else:
             if _VISIBLE is None or not _VISIBLE.is_connected():
                 pw = await _ensure_pw()
-                _VISIBLE = await pw.chromium.launch(headless=False, args=_LAUNCH_ARGS)
+                _VISIBLE = await pw.chromium.launch(
+                    headless=False,
+                    args=_LAUNCH_ARGS,
+                    executable_path=_CHROMIUM_EXECUTABLE,
+                )
                 logger.info("Browser visible iniciado")
             return _VISIBLE
 
