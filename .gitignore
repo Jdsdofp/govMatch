@@ -1,4 +1,43 @@
+# Python
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
 *.zip
+*.egg-info/
+dist/
+build/
+
+# Ambiente virtual
+venv/
+.venv/
+env/
+
+# Variáveis de ambiente
+.env
+.env.local
+
+# Banco SQLite local
+*.db
+*.db-shm
+*.db-wal
+
+# Artefatos de scraping
+tmp/
+cache/
+
+# Playwright
+.playwright-mcp/
+
+# Testes
+.pytest_cache/
+htmlcov/
+.coverage
+
+# IDEs
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
