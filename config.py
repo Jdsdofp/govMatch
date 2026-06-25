@@ -16,6 +16,17 @@ class Settings(BaseSettings):
 
     def model_post_init(self, _: object) -> None:
         self.PDF_DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        # Railway/Render fornecem DATABASE_URL com prefixo "postgresql://" —
+        # SQLAlchemy async exige "postgresql+asyncpg://"
+        if self.DATABASE_URL.startswith("postgresql://"):
+            self.DATABASE_URL = self.DATABASE_URL.replace(
+                "postgresql://", "postgresql+asyncpg://", 1
+            )
+        elif self.DATABASE_URL.startswith("postgres://"):
+            # Heroku usa "postgres://" (alias antigo)
+            self.DATABASE_URL = self.DATABASE_URL.replace(
+                "postgres://", "postgresql+asyncpg://", 1
+            )
 
 
 settings = Settings()

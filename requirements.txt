@@ -3,11 +3,12 @@ fastapi==0.115.0
 uvicorn[standard]==0.32.0
 python-multipart==0.0.12
 
-# Database — SQLite para MVP (sem compilação necessária)
+# Database
 sqlalchemy==2.0.36
 alembic==1.14.0
-aiosqlite==0.20.0
-# asyncpg==0.30.0  # Descomente ao migrar para PostgreSQL
+aiosqlite==0.20.0        # SQLite (dev local)
+asyncpg==0.30.0          # PostgreSQL async (produção)
+psycopg2-binary==2.9.10  # PostgreSQL sync (Alembic migrations)
 
 # Pydantic — versões com wheels cp313 no PyPI
 pydantic==2.10.0

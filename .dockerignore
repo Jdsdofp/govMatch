@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+
+# Banco local
+govmatch.db
+govmatch.db-shm
+govmatch.db-wal
+
+# Cache de scrapers e downloads temporários
+cache/
+tmp/
+.playwright-mcp/
+
+# Ambiente local
+.env
+*.env.local
+
+# Git e ferramentas
+.git/
+.gitignore
+.superpowers/
+alembic.ini
+
+# Testes (não necessários na imagem de produção)
+tests/
