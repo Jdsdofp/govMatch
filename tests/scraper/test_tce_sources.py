@@ -8,6 +8,9 @@ from scraper.sources.tce_ro import TCEROSource
 from scraper.sources.tce_rn import TCERNSource
 from scraper.sources.tce_ma import TCEMASource
 from scraper.sources.tce_pe import TCEPESource
+from scraper.sources.tce_am import TCEAMSource
+from scraper.sources.tce_pb import TCEPBSource
+from scraper.sources.tce_se import TCESESource
 
 
 def test_tce_sp_ids():
@@ -98,6 +101,45 @@ def test_tce_pe_ids():
 @pytest.mark.asyncio
 async def test_tce_pe_filtra_estado_errado():
     s = TCEPESource()
+    result = await s.buscar(estado="SP")
+    assert result == []
+
+
+def test_tce_am_ids():
+    s = TCEAMSource()
+    assert s.source_id == "tce_am"
+    assert s.interval_seconds == 86400
+
+
+def test_tce_pb_ids():
+    s = TCEPBSource()
+    assert s.source_id == "tce_pb"
+    assert s.interval_seconds == 86400
+
+
+def test_tce_se_ids():
+    s = TCESESource()
+    assert s.source_id == "tce_se"
+    assert s.interval_seconds == 21600
+
+
+@pytest.mark.asyncio
+async def test_tce_am_filtra_estado_errado():
+    s = TCEAMSource()
+    result = await s.buscar(estado="SP")
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_tce_pb_filtra_estado_errado():
+    s = TCEPBSource()
+    result = await s.buscar(estado="SP")
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_tce_se_filtra_estado_errado():
+    s = TCESESource()
     result = await s.buscar(estado="SP")
     assert result == []
 
