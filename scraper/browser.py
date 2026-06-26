@@ -97,10 +97,7 @@ class GovMatchScraper:
     ) -> list[EditalRaw]:
         """Delega para PNCPSource para manter compatibilidade com edital_service."""
         source = _PNCPSource()
-        if estado:
-            source_results = await source._buscar_uf(estado.upper(), palavras_chave, max_paginas)
-        else:
-            source_results = await source.buscar(palavras_chave, None)
+        source_results = await source.buscar(palavras_chave, estado.upper() if estado else None, max_paginas)
         return [
             EditalRaw(
                 numero_controle=r.numero_controle,

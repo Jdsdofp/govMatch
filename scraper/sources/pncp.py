@@ -33,12 +33,13 @@ class PNCPSource(BaseSource):
         self,
         palavras_chave: list[str] | None = None,
         estado: str | None = None,
+        max_paginas: int = 5,
     ) -> list[EditalRaw]:
         # Executa em grupos de 3 para respeitar rate limit da API PNCP
         resultados = []
         for i in range(0, len(MODALIDADES), 3):
             grupo = MODALIDADES[i:i+3]
-            tarefas = [self._buscar_modalidade(mod, palavras_chave, estado) for mod in grupo]
+            tarefas = [self._buscar_modalidade(mod, palavras_chave, estado, max_paginas) for mod in grupo]
             res = await asyncio.gather(*tarefas, return_exceptions=True)
             resultados.extend(zip(grupo, res))
             if i + 3 < len(MODALIDADES):
