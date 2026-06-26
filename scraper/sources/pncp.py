@@ -35,22 +35,16 @@ class PNCPSource(BaseSource):
         estado: str | None = None,
         max_paginas: int = 5,
     ) -> list[EditalRaw]:
-        # Executa em grupos de 3 para respeitar rate limit da API PNCP
-        resultados = []
-        for i in range(0, len(MODALIDADES), 3):
-            grupo = MODALIDADES[i:i+3]
-            tarefas = [self._buscar_modalidade(mod, palavras_chave, estado, max_paginas) for mod in grupo]
-            res = await asyncio.gather(*tarefas, return_exceptions=True)
-            resultados.extend(zip(grupo, res))
-            if i + 3 < len(MODALIDADES):
-                await asyncio.sleep(3.0)
-
+        # Processa modalidades sequencialmente para não estourar o rate limit da PNCP
         editais: list[EditalRaw] = []
-        for mod, res in resultados:
-            if isinstance(res, Exception):
-                logger.error("[PNCP] Erro modalidade=%d: %s", mod, res)
-            else:
+        for i, mod in enumerate(MODALIDADES):
+            try:
+                res = await self._buscar_modalidade(mod, palavras_chave, estado, max_paginas)
                 editais.extend(res)
+            except Exception as exc:
+                logger.error("[PNCP] Erro modalidade=%d: %s", mod, exc)
+            if i < len(MODALIDADES) - 1:
+                await asyncio.sleep(1.5)
 
         logger.info("[PNCP] Total: %d editais", len(editais))
         return editais
