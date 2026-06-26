@@ -43,7 +43,7 @@ class PNCPSource(BaseSource):
             res = await asyncio.gather(*tarefas, return_exceptions=True)
             resultados.extend(zip(grupo, res))
             if i + 3 < len(MODALIDADES):
-                await asyncio.sleep(1.0)
+                await asyncio.sleep(3.0)
 
         editais: list[EditalRaw] = []
         for mod, res in resultados:
@@ -87,6 +87,11 @@ class PNCPSource(BaseSource):
 
                 if resp.status_code in (204, 404):
                     break
+                if resp.status_code == 429:
+                    retry_after = int(resp.headers.get("Retry-After", "10"))
+                    logger.warning("[PNCP/mod=%d] 429 pág %d — aguardando %ds", modalidade, pagina, retry_after)
+                    await asyncio.sleep(retry_after)
+                    continue
                 if resp.status_code != 200:
                     logger.warning("[PNCP/mod=%d] Status %d pág %d", modalidade, resp.status_code, pagina)
                     break
